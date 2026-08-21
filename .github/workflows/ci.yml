@@ -8,19 +8,16 @@ on:
 
 jobs:
 
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB 1 — Build e Testes Unitários
-  # ════════════════════════════════════════════════════════════════════════════
+  # ══════════════════════════════════════════════════════════════
+  # JOB 1 — Build e Testes Unitários (paralelo ao lint)
+  # ══════════════════════════════════════════════════════════════
   build-and-test:
     name: "1 · Build & Testes Unitários"
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout do repositório
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configurar Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -29,175 +26,71 @@ jobs:
 
       - name: Executar testes com cobertura
         run: |
-          pytest tests/ \
-            --tb=short \
+          pytest tests/ -v \
             --junitxml=test-results.xml \
             --cov=. \
-            --cov-report=term-missing \
-            --cov-report=json:coverage.json \
-            -v
+            --cov-report=xml:coverage.xml
         env:
           AWS_REGION: "us-east-1"
           AWS_SQS_URL: "https://sqs.us-east-1.amazonaws.com/123/test-queue"
           AWS_DYNAMODB_TABLE: "test-table"
 
-      - name: Calcular complexidade ciclomática (radon)
+      - name: Publicar resultados dos testes no Job Summary
+        uses: EnricoMi/publish-unit-test-result-action@v2
         if: always()
-        run: |
-          radon cc app.py -s -j > radon-output.json
-          radon cc app.py -s -a
+        with:
+          files: test-results.xml
 
-      - name: Publicar relatório de testes no Job Summary
+      - name: Publicar cobertura no Job Summary
+        uses: irongut/CodeCoverageSummary@v1.3.0
         if: always()
-        run: |
-          python - <<'PYEOF'
-          import json, os
-          summary = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/stdout")
-          lines = []
-          lines.append("# 📊 Relatório de Qualidade — analytics-service\n")
-          lines.append("## 1 · Testes Unitários\n")
-          try:
-              import xml.etree.ElementTree as ET
-              root = ET.parse("test-results.xml").getroot()
-              total    = int(root.attrib.get("tests", 0))
-              failures = int(root.attrib.get("failures", 0))
-              errors   = int(root.attrib.get("errors", 0))
-              passed   = total - failures - errors
-              icon = "✅" if failures == 0 and errors == 0 else "❌"
-              lines.append(f"{icon} **{passed} passaram** | ❌ **{failures + errors} falharam** | Total: {total}\n")
-              if failures + errors > 0:
-                  lines.append("\n### Falhas\n")
-                  for tc in root.iter("testcase"):
-                      for child in tc:
-                          if child.tag in ("failure", "error"):
-                              lines.append(f"- `{tc.attrib.get('classname')}.{tc.attrib.get('name')}`: {child.attrib.get('message','')}\n")
-          except Exception as e:
-              lines.append(f"> ⚠️ Não foi possível ler test-results.xml: {e}\n")
-          try:
-              cov = json.load(open("coverage.json"))
-              total_pct = cov["totals"]["percent_covered"]
-              lines.append("\n## 📈 Cobertura de Código\n")
-              lines.append("| Arquivo | Linhas | Cobertura |\n")
-              lines.append("|---------|--------|----------|\n")
-              for fname, data in cov.get("files", {}).items():
-                  short = fname.split("/")[-1]
-                  pct = data["summary"]["percent_covered"]
-                  bar = "🟢" if pct >= 80 else ("🟡" if pct >= 50 else "🔴")
-                  lines.append(f"| `{short}` | {data['summary']['num_statements']} | {bar} {pct:.1f}% |\n")
-              cov_icon = "🟢" if total_pct >= 80 else ("🟡" if total_pct >= 50 else "🔴")
-              lines.append(f"| **Total** | — | {cov_icon} **{total_pct:.1f}%** |\n")
-          except Exception as e:
-              lines.append(f"> ⚠️ Não foi possível ler coverage.json: {e}\n")
-          try:
-              radon = json.load(open("radon-output.json"))
-              functions = []
-              for fname, blocks in radon.items():
-                  for b in blocks:
-                      functions.append({"file": fname.split("/")[-1], "name": b["name"], "complexity": b["complexity"], "rank": b["rank"]})
-              functions.sort(key=lambda x: x["complexity"], reverse=True)
-              lines.append("\n## 🔬 Complexidade Ciclomática (Top 10)\n")
-              lines.append("| Função | Arquivo | Score | Rank |\n")
-              lines.append("|--------|---------|-------|------|\n")
-              for fn in functions[:10]:
-                  risk = "🔴" if fn["complexity"] >= 10 else ("🟡" if fn["complexity"] >= 5 else "🟢")
-                  lines.append(f"| `{fn['name']}` | `{fn['file']}` | {risk} {fn['complexity']} | {fn['rank']} |\n")
-          except Exception as e:
-              lines.append(f"> ⚠️ Não foi possível ler radon-output.json: {e}\n")
-          open(summary, "a").writelines(lines)
-          PYEOF
-        env:
-          GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
+        with:
+          filename: coverage.xml
+          format: markdown
+          output: both
 
-      - name: Salvar artefatos de testes
+      - name: Complexidade ciclomática (radon)
         if: always()
-        uses: actions/upload-artifact@v4
+        run: radon cc app.py -s -a
+
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: analytics-test-reports
           path: |
             test-results.xml
-            coverage.json
-            radon-output.json
+            coverage.xml
           retention-days: 30
 
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB 2 — Lint / Análise Estática
-  # ════════════════════════════════════════════════════════════════════════════
+  # ══════════════════════════════════════════════════════════════
+  # JOB 2 — Lint / Análise Estática (paralelo ao build-and-test)
+  # ══════════════════════════════════════════════════════════════
   lint:
     name: "2 · Lint / Análise Estática"
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout do repositório
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configurar Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Instalar flake8
         run: pip install flake8==7.1.1
 
-      - name: Executar lint (flake8)
-        run: |
-          flake8 app.py --max-line-length=120 --format=json > flake8-output.json || true
-          flake8 app.py --max-line-length=120 --statistics || true
+      - name: Executar flake8
+        run: flake8 app.py --max-line-length=120 --statistics || true
 
-      - name: Publicar relatório de lint no Job Summary
-        if: always()
-        run: |
-          python - <<'PYEOF'
-          import json, os
-          summary = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/stdout")
-          lines = []
-          lines.append("# 🔍 Lint — analytics-service\n")
-          try:
-              raw = open("flake8-output.json").read().strip()
-              flake8_data = json.loads(raw) if raw else {}
-              all_issues = []
-              for fpath, issues in flake8_data.items():
-                  short = fpath.split("/")[-1]
-                  for issue in issues:
-                      all_issues.append({"file": short, "line": issue["line_number"], "code": issue["code"], "text": issue["text"]})
-              if not all_issues:
-                  lines.append("✅ Nenhum problema encontrado.\n")
-              else:
-                  lines.append(f"> ⚠️ **{len(all_issues)} problema(s) encontrado(s)** — não bloqueia a pipeline.\n\n")
-                  lines.append("| Arquivo | Linha | Código | Descrição |\n")
-                  lines.append("|---------|-------|--------|----------|\n")
-                  for issue in all_issues[:30]:
-                      lines.append(f"| `{issue['file']}` | {issue['line']} | `{issue['code']}` | {issue['text']} |\n")
-                  if len(all_issues) > 30:
-                      lines.append(f"\n> ... e mais {len(all_issues) - 30} problema(s). Veja o artefato.\n")
-          except Exception as e:
-              lines.append(f"> ⚠️ Erro ao processar lint: {e}\n")
-          open(summary, "a").writelines(lines)
-          PYEOF
-        env:
-          GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
-
-      - name: Salvar artefato de lint
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: analytics-lint-report
-          path: flake8-output.json
-          retention-days: 30
-
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB 3 — Docker Build
-  # ════════════════════════════════════════════════════════════════════════════
+  # ══════════════════════════════════════════════════════════════
+  # JOB 3 — Docker Build (aguarda jobs 1 e 2)
+  # ══════════════════════════════════════════════════════════════
   docker-build:
     name: "3 · Docker Build"
     runs-on: ubuntu-latest
     needs: [build-and-test, lint]
-
     steps:
-      - name: Checkout do repositório
-        uses: actions/checkout@v4
-
-      - name: Configurar Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
 
       - name: Build da imagem Docker
         uses: docker/build-push-action@v5
@@ -209,32 +102,37 @@ jobs:
           cache-to: type=gha,mode=max
           outputs: type=docker,dest=/tmp/analytics-service.tar
 
-      - name: Salvar imagem como artefato
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: analytics-docker-image
           path: /tmp/analytics-service.tar
           retention-days: 1
 
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB 4 — Scan de Vulnerabilidades (Trivy)
-  # ════════════════════════════════════════════════════════════════════════════
+  # ══════════════════════════════════════════════════════════════
+  # JOB 4 — Scan de Vulnerabilidades com Trivy
+  # ══════════════════════════════════════════════════════════════
   trivy-scan:
     name: "4 · Scan de Vulnerabilidades (Trivy)"
     runs-on: ubuntu-latest
     needs: docker-build
-
     steps:
-      - name: Baixar imagem Docker do artefato
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: analytics-docker-image
           path: /tmp
 
-      - name: Carregar imagem no Docker
+      - name: Carregar imagem
         run: docker load --input /tmp/analytics-service.tar
 
-      - name: Executar Trivy scan
+      - name: Trivy — scan e publicar no Job Summary
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: analytics-service:${{ github.sha }}
+          format: table
+          exit-code: 0
+          severity: CRITICAL,HIGH,MEDIUM
+
+      - name: Trivy — salvar relatório JSON
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: analytics-service:${{ github.sha }}
@@ -243,107 +141,48 @@ jobs:
           exit-code: 0
           severity: CRITICAL,HIGH,MEDIUM
 
-      - name: Publicar relatório Trivy no Job Summary
+      - uses: actions/upload-artifact@v4
         if: always()
-        run: |
-          python3 - <<'PYEOF'
-          import json, os
-          summary = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/stdout")
-          lines = []
-          lines.append("# 🛡️ Scan de Vulnerabilidades — analytics-service\n")
-          try:
-              data = json.load(open("trivy-report.json"))
-              results = data.get("Results", [])
-              all_vulns = []
-              for result in results:
-                  for v in result.get("Vulnerabilities") or []:
-                      all_vulns.append({
-                          "id": v.get("VulnerabilityID", ""),
-                          "pkg": v.get("PkgName", ""),
-                          "severity": v.get("Severity", ""),
-                          "installed": v.get("InstalledVersion", ""),
-                          "fixed": v.get("FixedVersion", "—"),
-                          "title": v.get("Title", "")[:60],
-                      })
-              severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4}
-              all_vulns.sort(key=lambda x: severity_order.get(x["severity"], 5))
-              counts = {s: sum(1 for v in all_vulns if v["severity"] == s) for s in ["CRITICAL", "HIGH", "MEDIUM"]}
-              if not all_vulns:
-                  lines.append("✅ Nenhuma vulnerabilidade encontrada.\n")
-              else:
-                  lines.append(f"🔴 **CRITICAL: {counts['CRITICAL']}** | 🟠 **HIGH: {counts['HIGH']}** | 🟡 **MEDIUM: {counts['MEDIUM']}**\n\n")
-                  lines.append("| Severidade | CVE | Pacote | Versão Instalada | Fix Disponível | Descrição |\n")
-                  lines.append("|-----------|-----|--------|-----------------|----------------|----------|\n")
-                  icons = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢", "UNKNOWN": "⚪"}
-                  for v in all_vulns[:25]:
-                      icon = icons.get(v["severity"], "⚪")
-                      lines.append(f"| {icon} {v['severity']} | `{v['id']}` | `{v['pkg']}` | {v['installed']} | {v['fixed']} | {v['title']} |\n")
-                  if len(all_vulns) > 25:
-                      lines.append(f"\n> ... e mais {len(all_vulns) - 25} vulnerabilidade(s). Veja o artefato `trivy-report.json`.\n")
-          except Exception as e:
-              lines.append(f"> ⚠️ Erro ao processar relatório Trivy: {e}\n")
-          open(summary, "a").writelines(lines)
-          PYEOF
-        env:
-          GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
-
-      - name: Salvar relatório Trivy
-        if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: analytics-trivy-report
           path: trivy-report.json
           retention-days: 30
 
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB 5 — Push para AWS ECR
-  # Só executa em push na branch main
-  # Requer secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ACCOUNT_ID
-  # ════════════════════════════════════════════════════════════════════════════
+  # ══════════════════════════════════════════════════════════════
+  # JOB 5 — Push para AWS ECR (somente na branch main)
+  # Requer secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+  # ══════════════════════════════════════════════════════════════
   push-ecr:
     name: "5 · Push para AWS ECR"
     runs-on: ubuntu-latest
     needs: trivy-scan
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-
     steps:
-      - name: Checkout do repositório
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configurar credenciais AWS
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Login no Amazon ECR
-        id: login-ecr
+      - id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Baixar imagem Docker do artefato
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: analytics-docker-image
           path: /tmp
 
-      - name: Carregar imagem no Docker
-        run: docker load --input /tmp/analytics-service.tar
+      - run: docker load --input /tmp/analytics-service.tar
 
-      - name: Criar tag com commit hash e fazer push
+      - name: Tag e push para ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: tech-challenge-prod/analytics-service
           IMAGE_TAG: ${{ github.sha }}
         run: |
           SHORT_SHA=$(echo $IMAGE_TAG | cut -c1-7)
-          FULL_TAG="$ECR_REGISTRY/$ECR_REPOSITORY:$SHORT_SHA"
-
-          docker tag analytics-service:$IMAGE_TAG $FULL_TAG
-          docker push $FULL_TAG
-
-          echo "### 🚀 Push ECR — analytics-service" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Imagem publicada com sucesso!" >> $GITHUB_STEP_SUMMARY
-          echo "- **Repositório:** \`$ECR_REGISTRY/$ECR_REPOSITORY\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tag:** \`$SHORT_SHA\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit:** \`$IMAGE_TAG\`" >> $GITHUB_STEP_SUMMARY
+          docker tag analytics-service:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$SHORT_SHA
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$SHORT_SHA
+          echo "✅ Imagem publicada: $ECR_REGISTRY/$ECR_REPOSITORY:$SHORT_SHA" >> $GITHUB_STEP_SUMMARY
