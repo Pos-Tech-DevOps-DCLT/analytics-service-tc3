@@ -1,0 +1,44 @@
+{
+    "app.py": [
+        {
+            "type": "function",
+            "rank": "B",
+            "col_offset": 0,
+            "name": "sqs_worker_loop",
+            "lineno": 88,
+            "endline": 115,
+            "complexity": 6,
+            "closures": []
+        },
+        {
+            "type": "function",
+            "rank": "A",
+            "col_offset": 0,
+            "name": "process_message",
+            "lineno": 46,
+            "endline": 85,
+            "complexity": 4,
+            "closures": []
+        },
+        {
+            "type": "function",
+            "rank": "A",
+            "col_offset": 0,
+            "name": "health",
+            "lineno": 122,
+            "endline": 124,
+            "complexity": 1,
+            "closures": []
+        },
+        {
+            "type": "function",
+            "rank": "A",
+            "col_offset": 0,
+            "name": "start_worker",
+            "lineno": 128,
+            "endline": 131,
+            "complexity": 1,
+            "closures": []
+        }
+    ]
+}

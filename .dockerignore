@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+coverage.json
+test-results.xml
+radon-output.json
+flake8-output.json
+tests/
+TESTING.md
+README.md
+requirements-test.txt
+.github/
+.env
+*.log
