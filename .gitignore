@@ -1,0 +1,18 @@
+# Ambiente virtual
+.venv/
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Artefatos de testes e relatórios (gerados pela pipeline CI)
+.coverage
+coverage.json
+test-results.xml
+radon-output.json
+flake8-output.json
+
+# Variáveis de ambiente locais
+.env
