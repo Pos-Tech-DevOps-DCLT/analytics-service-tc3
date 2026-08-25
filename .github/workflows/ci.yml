@@ -14,6 +14,9 @@ jobs:
   build-and-test:
     name: "1 · Build & Testes Unitários"
     runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -68,6 +71,9 @@ jobs:
   lint:
     name: "2 · Lint / Análise Estática"
     runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
