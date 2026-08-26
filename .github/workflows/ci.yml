@@ -84,8 +84,21 @@ jobs:
       - name: Instalar flake8
         run: pip install flake8==7.1.1
 
-      - name: Executar flake8
-        run: flake8 app.py --max-line-length=120 --statistics || true
+      - name: Executar flake8 e publicar no Job Summary
+        run: |
+          echo "## 🔍 Lint — flake8" >> $GITHUB_STEP_SUMMARY
+          OUTPUT=$(flake8 app.py --max-line-length=120 --statistics 2>&1) || true
+          COUNT=$(flake8 app.py --max-line-length=120 --count --quiet 2>/dev/null | tail -1 || echo "0")
+          if [ -z "$OUTPUT" ]; then
+            echo "✅ Nenhum problema encontrado." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "> ⚠️ **$COUNT problema(s) encontrado(s)** — não bloqueia a pipeline." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "$OUTPUT" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "$OUTPUT"
 
   # ══════════════════════════════════════════════════════════════
   # JOB 3 — Docker Build (aguarda jobs 1 e 2)
