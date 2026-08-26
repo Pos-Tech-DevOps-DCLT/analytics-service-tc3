@@ -55,7 +55,24 @@ jobs:
 
       - name: Complexidade ciclomática (radon)
         if: always()
-        run: radon cc app.py -s -a
+        run: |
+          echo "## 🔬 Complexidade Ciclomática" >> $GITHUB_STEP_SUMMARY
+          echo "| Função | Arquivo | Score | Rank |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|---------|-------|------|" >> $GITHUB_STEP_SUMMARY
+          radon cc app.py -s --json | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          rows = []
+          for fname, blocks in data.items():
+              short = fname.split(chr(47))[-1]
+              for b in blocks:
+                  rows.append((b[\"complexity\"], b[\"name\"], short, b[\"rank\"]))
+          rows.sort(reverse=True)
+          for score, name, f, rank in rows[:10]:
+              icon = \"🔴\" if score >= 10 else (\"🟡\" if score >= 5 else \"🟢\")
+              print(f\"| \`{name}\` | \`{f}\` | {icon} {score} | {rank} |\")
+          " >> $GITHUB_STEP_SUMMARY
+          radon cc app.py -s -a
 
       - uses: actions/upload-artifact@v4
         if: always()
