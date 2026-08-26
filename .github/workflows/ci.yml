@@ -10,7 +10,7 @@ on:
 jobs:
 
   # ══════════════════════════════════════════════════════════════
-  # JOB 1 — Build e Testes Unitários (paralelo ao lint)
+  # JOB 1 -— Build e Testes Unitários (paralelo ao lint)
   # ══════════════════════════════════════════════════════════════
   build-and-test:
     name: "1 · Build & Testes Unitários"
