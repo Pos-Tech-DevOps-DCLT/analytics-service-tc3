@@ -2,9 +2,9 @@ name: CI/CD — analytics-service
 
 on:
   push:
-    branches: [main]
+    branches: [main, pipeline-template]
   pull_request:
-    branches: [main]
+    branches: [main , pipeline-template]
   workflow_dispatch:
 
 jobs:
