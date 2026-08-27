@@ -7,6 +7,10 @@ on:
     branches: [main , pipeline-template]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  checks: write
+
 jobs:
   ci:
     uses: Pos-Tech-DevOps-DCLT/infra-tc3/.github/workflows/ci-cd-python-template.yaml@main
