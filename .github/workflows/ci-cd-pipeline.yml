@@ -1,0 +1,15 @@
+name: CI/CD — analytics-service
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  ci:
+    uses: Pos-Tech-DevOps-DCLT/infra-tc3/.github/workflows/ci-cd-python-template.yaml@main
+    with:
+      project: analytics-service
+    secrets: inherit
